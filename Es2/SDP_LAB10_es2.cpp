@@ -56,14 +56,16 @@
 *
 **/
 
+// !UNICODE
 #ifndef UNICODE
 #define UNICODE
 #define _UNICODE
-#endif // !UNICODE
+#endif 
 
+// !_CRT_SECURE_NO_WARNINGS
 #ifndef _CRT_SECURE_NO_WARNINGS
 #define _CRT_SECURE_NO_WARNINGS
-#endif // !_CRT_SECURE_NO_WARNINGS
+#endif 
 
 // DEBUG set to 1 allows a verbose output
 #define DEBUG 0
@@ -80,10 +82,9 @@
 #define TYPE_DOT 3
 
 // name rules for semaphores
-#define readerSemaphoreNameTemplate _T("lab10es02_ReaderSemaphore")
-#define comparatorSemaphoreName _T("lab10es02_ComparatorSemaphore")
+#define readerSemaphoreNameTemplate _T("lab10es03_ReaderSemaphore")
+#define comparatorSemaphoreName _T("lab10es03_ComparatorSemaphore")
 
-// typedef
 // structure that will be passed as parameter to a reader thread
 typedef	struct {
 	volatile BOOL terminate;	// can be set by comparator
@@ -102,18 +103,16 @@ typedef	struct {
 	LPHANDLE readersSemaphore;		// a shortcut to the readers semaphore
 } COMPARATORPARAM;
 
-typedef COMPARATORPARAM* LPCOMPARATORPARAM;
 typedef READERPARAM* LPREADERPARAM;
+typedef COMPARATORPARAM* LPCOMPARATORPARAM;
 
 // prototypes
-BOOL visitDirectoryRecursiveAndDo(LPREADERPARAM param, LPTSTR path, DWORD level, BOOL(*toDo)(LPREADERPARAM, LPTSTR));
+BOOL visitDirectoryRAndDo(LPREADERPARAM param, LPTSTR path, DWORD level, BOOL(*toDo)(LPREADERPARAM, LPTSTR));
 static DWORD FileType(LPWIN32_FIND_DATA pFileData);
 DWORD WINAPI comparatorThreadFunction(LPVOID param);
 DWORD WINAPI readerThreadFunction(LPVOID param);
 LPTSTR getEntryPartialPath(LPREADERPARAM param);
 BOOL whatToDo(LPREADERPARAM param, LPTSTR entry);
-LPWSTR getErrorMessageAsString(DWORD errorCode);
-int Return(int seconds, int value);
 
 // main
 INT _tmain(INT argc, LPTSTR argv[]) {
@@ -122,7 +121,7 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	DWORD nReaders;
 	DWORD i;
 
-	// parameters for reader
+	// array of parameters for readers
 	LPREADERPARAM readerParams;
 
 	// parameter for comparator
@@ -130,37 +129,32 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 
 	// semaphore on which the comparator waits
 	HANDLE comparatorSemaphore;
-
 	// array of semaphores: each reader waits on his own semaphore
 	LPHANDLE readersSemaphore;
 
 	TCHAR semaphoreName[MAX_PATH];
 
-	// check arguments number
+	// check inout parameters
 	if (argc < 2) {
 		_ftprintf(stderr, _T("Usage: %s list_of_folders_to_be_visited\n"), argv[0]);
 		return 1;
 	}
 
-	// how much readers are needed
+	// take reader number
 	nReaders = argc - 1;
 
-	// allocate thread handles array
+	// allocate arrays
 	readersHandles = (LPHANDLE)malloc(nReaders * sizeof(HANDLE));
 	if (readersHandles == NULL) {
 		_ftprintf(stderr, _T("Error allocating space for threads\n"));
 		return 2;
 	}
-
-	// allocate semaphore array 
 	readersSemaphore = (LPHANDLE)malloc(nReaders * sizeof(HANDLE));
 	if (readersSemaphore == NULL) {
 		_ftprintf(stderr, _T("Error allocating the semaphores\n"));
 		free(readersHandles);
 		return 3;
 	}
-
-	// allocate parameters array 
 	readerParams = (LPREADERPARAM)malloc(nReaders * sizeof(READERPARAM));
 	if (readerParams == NULL) {
 		_ftprintf(stderr, _T("Error allocating params\n"));
@@ -186,24 +180,28 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 
 		// create the semaphore (can have counter 0 or 1, initially 1 --> free)
 		readersSemaphore[i] = CreateSemaphore(NULL, 1, 1, semaphoreName);
+
 		if (readersSemaphore[i] == INVALID_HANDLE_VALUE) {
 			// on failure, terminate everything
 			_ftprintf(stderr, _T("Error Creating a semaphore\n"));
+
 			free(readersHandles);
 			free(readersSemaphore);
 			free(readerParams);
+
 			CloseHandle(comparatorSemaphore);
+
 			return 6;
 		}
 
 		// create the parameter
-		readerParams[i].comparatorSemaphore =	&comparatorSemaphore;	// a reference to the comparator semaphore (to signal on it)
-		readerParams[i].readerSemaphore =		&readersSemaphore[i];	// a reference to its own semaphore (to wait on)
-		readerParams[i].done =					FALSE;					// this reader has not yet ended his work
-		readerParams[i].terminate =				FALSE;					// this thread must not terminate (for now)
-		readerParams[i].path =					argv[i + 1];			// set the initial path
-												
-		// create the thread
+		readerParams[i].comparatorSemaphore = &comparatorSemaphore;	// a reference to the comparator semaphore (to signal on it)
+		readerParams[i].readerSemaphore = &readersSemaphore[i];		// a reference to its own semaphore (to wait on)
+		readerParams[i].done = FALSE;			// this reader has not yet ended his work
+		readerParams[i].terminate = FALSE;		// this thread must not terminate (for now)
+		readerParams[i].path = argv[i + 1];		// set the initial path
+												// create the thread
+
 		readersHandles[i] = CreateThread(0, 0, readerThreadFunction, &readerParams[i], 0, NULL);
 		if (readersHandles[i] == INVALID_HANDLE_VALUE) {
 			// on failure, terminate everything
@@ -217,12 +215,12 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 	}
 
 	// create the parameter for the comparator
-	comparatorParam.nReaders =				nReaders;				// how many readers
-	comparatorParam.params =				readerParams;			// need to access the array of reader params (to see entry, done and set terminate)
-	comparatorParam.comparatorSemaphore =	&comparatorSemaphore;	// a reference to the comparator semaphore (to wait on)
-	comparatorParam.readersSemaphore =		readersSemaphore;		// a reference to the array of reader semaphores (to signal on them)
-																
-	// create the comparator thread
+	comparatorParam.nReaders = nReaders;		// how many readers
+	comparatorParam.params = readerParams;		// need to access the array of reader params (to see entry, done and set terminate)
+	comparatorParam.comparatorSemaphore = &comparatorSemaphore;	// a reference to the comparator semaphore (to wait on)
+	comparatorParam.readersSemaphore = readersSemaphore;		// a reference to the array of reader semaphores (to signal on them)
+																// create the comparator thread
+
 	comparatorHandle = CreateThread(NULL, 0, comparatorThreadFunction, &comparatorParam, 0, NULL);
 	if (comparatorHandle == INVALID_HANDLE_VALUE) {
 		// on failure, terminate everything
@@ -236,7 +234,6 @@ INT _tmain(INT argc, LPTSTR argv[]) {
 
 	// wait the termination of the readers
 	WaitForMultipleObjects(nReaders, readersHandles, TRUE, INFINITE);
-	
 	for (i = 0; i < nReaders; i++) {
 		// want to be sure that it is not null
 		assert(readersHandles[i]);
@@ -263,19 +260,21 @@ DWORD WINAPI readerThreadFunction(LPVOID param) {
 	LPREADERPARAM readerParam = (LPREADERPARAM)param;
 	BOOL earlyTermination;
 
-	earlyTermination = !visitDirectoryRecursiveAndDo(readerParam, readerParam->path, 0, whatToDo);
+	earlyTermination = !visitDirectoryRAndDo(readerParam, readerParam->path, 0, whatToDo);
 
 	// the visit finished
+#if DEBUG
 	_tprintf(_T("reader: finished. Early termination: %d\n"), earlyTermination);
+#endif // DEBUG
 
 	if (!earlyTermination) {
 		// wait the last signal on the semaphore, to be sure that comparator is not still working on shared data
 		WaitForSingleObject(*readerParam->readerSemaphore, INFINITE);
 	}
-	
+
 	// this reader finished
 	readerParam->done = 1;
-	
+
 	// release the semaphore, so that the comparator can continue
 	ReleaseSemaphore(*readerParam->comparatorSemaphore, 1, NULL);
 
@@ -312,12 +311,18 @@ DWORD WINAPI comparatorThreadFunction(LPVOID param) {
 				someContinue = TRUE;
 				// compare the partial paths
 				if (strToCompare == NULL) {
+
+#if DEBUG
 					_tprintf(_T("comparator: first entry:   %s\n"), comparatorParam->params[i].entry);
+#endif // DEBUG
 
 					// the first entry to compare
 					strToCompare = getEntryPartialPath(&comparatorParam->params[i]);
 				} else {
+
+#if DEBUG
 					_tprintf(_T("comparator: another entry: %s\n"), comparatorParam->params[i].entry);
+#endif // DEBUG
 
 					// this entry must be compared with the first one (only the partial path, ignoring the starting point
 					if (_tcsncmp(strToCompare, getEntryPartialPath(&comparatorParam->params[i]), MAX_PATH) != 0) {
@@ -329,13 +334,19 @@ DWORD WINAPI comparatorThreadFunction(LPVOID param) {
 		}
 
 		if (someFinished && someContinue) {
+
+#if DEBUG
 			_tprintf(_T("comparator: some finished and some continue\n"));
+#endif // DEBUG
 
 			different = TRUE;
 		}
 
 		if (different) {
+
+#if DEBUG
 			_tprintf(_T("comparator: different\n"));
+#endif // DEBUG
 
 			for (i = 0; i < comparatorParam->nReaders; i++) {
 				// comunicate to each reader that it must terminate
@@ -350,7 +361,7 @@ DWORD WINAPI comparatorThreadFunction(LPVOID param) {
 	}
 
 	_tprintf(_T("Comparator result: the subtrees are %s\n"), different ? _T("different") : _T("equal"));
-	
+
 	// terminate the thread
 	return 0;
 }
@@ -359,7 +370,9 @@ BOOL whatToDo(LPREADERPARAM param, LPTSTR entry) {
 	// wait on its semaphore
 	WaitForSingleObject(*param->readerSemaphore, INFINITE);
 
+#if DEBUG
 	_tprintf(_T("reader: entry: %s\n"), entry);
+#endif // DEBUG
 
 	// copy the entry in the shared structure
 	_tcsncpy(param->entry, entry, MAX_PATH);
@@ -368,7 +381,11 @@ BOOL whatToDo(LPREADERPARAM param, LPTSTR entry) {
 	ReleaseSemaphore(*param->comparatorSemaphore, 1, NULL);
 
 	if (param->terminate) {
+
+#if DEBUG
 		_tprintf(_T("reader: they told me to terminate\n"));
+#endif // DEBUG
+
 		// false will break the recursion
 		return FALSE;
 	} else {
@@ -376,8 +393,8 @@ BOOL whatToDo(LPREADERPARAM param, LPTSTR entry) {
 	}
 }
 
-BOOL visitDirectoryRecursiveAndDo(LPREADERPARAM param, LPTSTR path, DWORD level, BOOL(*toDo)(LPREADERPARAM, LPTSTR)) {
-	LPTSTR path1 = param->path;
+BOOL visitDirectoryRAndDo(LPREADERPARAM param, LPTSTR path, DWORD level, BOOL(*toDo)(LPREADERPARAM, LPTSTR)) {
+	//LPTSTR path1 = param->path;
 	WIN32_FIND_DATA findFileData;
 	HANDLE hFind;
 	TCHAR searchPath[MAX_PATH];
@@ -398,6 +415,7 @@ BOOL visitDirectoryRecursiveAndDo(LPREADERPARAM param, LPTSTR path, DWORD level,
 	do {
 		// generate a new path by appending to path the name of the found entry
 		_sntprintf(newPath, MAX_PATH, _T("%s\\%s"), path, findFileData.cFileName);
+
 		if (!toDo(param, newPath)) {
 			// break the recursion
 			FindClose(hFind);
@@ -406,18 +424,17 @@ BOOL visitDirectoryRecursiveAndDo(LPREADERPARAM param, LPTSTR path, DWORD level,
 
 		// check the type of file
 		DWORD fType = FileType(&findFileData);
-
 		if (fType == TYPE_FILE) {
 			// this is a file
-			_tprintf(_T("FILE %s "), path1);
+			//_tprintf(_T("FILE %s "), path1);
+			// call the function to copy with modifications
 		}
 
 		if (fType == TYPE_DIR) {
 			// this is a directory
-			_tprintf(_T("DIR %s\n"), path1);
-
+			//_tprintf(_T("DIR %s\n"), path1);
 			// recursive call to the new paths
-			if (!visitDirectoryRecursiveAndDo(param, newPath, level + 1, toDo)) {
+			if (!visitDirectoryRAndDo(param, newPath, level + 1, toDo)) {
 				// break the recursion
 				FindClose(hFind);
 				return FALSE;
@@ -441,8 +458,7 @@ static DWORD FileType(LPWIN32_FIND_DATA pFileData) {
 	if (IsDir) {
 		if (lstrcmp(pFileData->cFileName, _T(".")) == 0 || lstrcmp(pFileData->cFileName, _T("..")) == 0) {
 			FType = TYPE_DOT;
-		}
-		else {
+		} else {
 			FType = TYPE_DIR;
 		}
 	}
